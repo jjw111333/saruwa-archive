@@ -1252,7 +1252,7 @@ document.getElementById('grade-metric-tabs').addEventListener('click', e => {
 
   // ══════ 이벤트 관리 → 아카이브 내보내기 ══════
   window.exportToArchive = function() {
-    var events = (window.APP && window.APP.events) ? window.APP.events : {};
+    var events = (typeof APP !== 'undefined' && APP.events) ? APP.events : {};
     var checkedYms = Array.prototype.map.call(document.querySelectorAll('.ev-check:checked'), function(cb) { return cb.dataset.ym; });
     if (!checkedYms.length) { showToast('내보낼 이벤트를 선택해주세요'); return; }
     var entries = checkedYms.filter(function(ym) { return events[ym]; }).map(function(ym) { return [ym, events[ym]]; });
