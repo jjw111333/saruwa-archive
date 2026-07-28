@@ -1193,7 +1193,8 @@ document.getElementById('grade-metric-tabs').addEventListener('click', e => {
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
-  const firebaseConfig = {
+(function() {
+  var firebaseConfig = {
     apiKey: "AIzaSyCzvQ7ETNI5YHbjzi-MtZ-IGJZxXWRXz8w",
     authDomain: "saruwa-archive.firebaseapp.com",
     projectId: "saruwa-archive",
@@ -1201,138 +1202,151 @@ document.getElementById('grade-metric-tabs').addEventListener('click', e => {
     messagingSenderId: "505555222587",
     appId: "1:505555222587:web:9fd339b7ecb6f0715b5c1e"
   };
-
   firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
+  var db = firebase.firestore();
 
-  let arcEvents = [];
-  let arcEditId = null;
-  let phrases = [];
-  let phraseEditId = null;
+  var arcEvents = [];
+  var arcEditId = null;
+  var phrases = [];
+  var phraseEditId = null;
 
-  // 탭 클릭 시 로드
-  document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        const t = tab.dataset.tab;
+  // 탭 클릭 시 Firebase 탭 로드
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.tab').forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        var t = tab.dataset.tab;
         if (t === 'archive') loadArchive();
         if (t === 'phrases') loadPhrases();
       });
     });
+    // 모달 배경 클릭 닫기
+    ['arc-modal','ph-modal','ph-detail-modal'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('click', function(e) {
+        if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+      });
+    });
   });
 
-  // ══════════════ 이벤트 아카이브 ══════════════
+  // ══════ 이벤트 아카이브 ══════
 
-  async function loadArchive() {
+  function loadArchive() {
     document.getElementById('arc-loading').style.display = 'block';
     document.getElementById('arc-grid').innerHTML = '';
-    try {
-      const snap = await db.collection('events').orderBy('createdAt', 'desc').get();
-      arcEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    } catch(e) {
-      const snap = await db.collection('events').get();
-      arcEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    }
-    document.getElementById('arc-loading').style.display = 'none';
-    renderArchive();
+    db.collection('events').orderBy('createdAt', 'desc').get()
+      .then(function(snap) {
+        arcEvents = snap.docs.map(function(d) { return Object.assign({id: d.id}, d.data()); });
+        document.getElementById('arc-loading').style.display = 'none';
+        renderArchive();
+      })
+      .catch(function() {
+        db.collection('events').get().then(function(snap) {
+          arcEvents = snap.docs.map(function(d) { return Object.assign({id: d.id}, d.data()); });
+          document.getElementById('arc-loading').style.display = 'none';
+          renderArchive();
+        });
+      });
   }
 
   function renderArchive() {
-    const filter = document.getElementById('arc-filter').value;
-    const search = document.getElementById('arc-search').value.toLowerCase();
-
-    let filtered = arcEvents.filter(e => {
-      const mf = filter === 'all' || e.status === filter;
-      const ms = !search || (e.name||'').toLowerCase().includes(search) || (e.benefit||'').toLowerCase().includes(search);
-      return mf && ms;
+    var filter = document.getElementById('arc-filter').value;
+    var search = document.getElementById('arc-search').value.toLowerCase();
+    var filtered = arcEvents.filter(function(e) {
+      return (filter === 'all' || e.status === filter) &&
+             (!search || (e.name||'').toLowerCase().includes(search) || (e.benefit||'').toLowerCase().includes(search));
     });
 
     document.getElementById('arc-stat-total').textContent = arcEvents.length;
-    document.getElementById('arc-stat-active').textContent = arcEvents.filter(e => e.status === '진행중').length;
-    document.getElementById('arc-stat-planned').textContent = arcEvents.filter(e => e.status === '예정').length;
-    document.getElementById('arc-stat-ended').textContent = arcEvents.filter(e => e.status === '종료').length;
-
-    const statusColor = { '진행중': 'var(--positive)', '예정': 'var(--event)', '종료': 'var(--text-sub)' };
+    document.getElementById('arc-stat-active').textContent = arcEvents.filter(function(e){return e.status==='진행중';}).length;
+    document.getElementById('arc-stat-planned').textContent = arcEvents.filter(function(e){return e.status==='예정';}).length;
+    document.getElementById('arc-stat-ended').textContent = arcEvents.filter(function(e){return e.status==='종료';}).length;
 
     if (filtered.length === 0) {
       document.getElementById('arc-grid').innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--text-dim);font-size:14px;">이벤트가 없습니다. 추가해 주세요!</div>';
       return;
     }
 
-    document.getElementById('arc-grid').innerHTML = filtered.map(e => {
-      const dateStr = e.start && e.end ? e.start+' ~ '+e.end : e.start ? e.start+' ~' : '날짜 미정';
-      const sitesArr = e.sites ? e.sites.split(',') : [];
-      const sitesPreview = sitesArr.slice(0,3).map(s=>s.trim()).join(', ') + (sitesArr.length > 3 ? ' 외 '+(sitesArr.length-3)+'개' : '');
-      const color = statusColor[e.status] || 'var(--text-sub)';
-      return '<div class="kpi-card" style="cursor:pointer;padding:20px;" onclick="openArchiveDetail(''+e.id+'')">'
-        +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:8px;">'
-        +'<div style="font-size:15px;font-weight:700;color:#fff;line-height:1.4;">'+e.name+'</div>'
-        +'<span style="background:'+color+'22;color:'+color+';border:1px solid '+color+'44;border-radius:6px;font-size:11px;font-weight:700;padding:3px 9px;white-space:nowrap;">'+e.status+'</span>'
-        +'</div>'
-        +'<div style="font-size:12px;color:var(--text-sub);margin-bottom:6px;">📅 '+dateStr+'</div>'
-        +'<div style="font-size:12px;color:var(--text-sub);margin-bottom:6px;">👥 '+(e.target||'–')+'</div>'
-        +'<div style="font-size:12px;color:var(--text-sub);margin-bottom:6px;">🎁 '+(e.benefit||'–')+'</div>'
-        +'<div style="font-size:12px;color:var(--text-sub);margin-bottom:14px;">🛍 '+(sitesPreview||'–')+'</div>'
-        +'<div style="display:flex;gap:6px;justify-content:flex-end;" onclick="event.stopPropagation()">'
-        +'<button class="btn-edit" onclick="openArchiveEdit(''+e.id+'')">수정</button>'
-        +'<button class="btn-danger" onclick="deleteArchiveEvent(''+e.id+'')">삭제</button>'
-        +'</div></div>';
+    var statusColor = {'진행중':'var(--positive)','예정':'var(--event)','종료':'var(--text-sub)'};
+    var html = filtered.map(function(e) {
+      var dateStr = (e.start && e.end) ? (e.start+' ~ '+e.end) : (e.start ? e.start+' ~' : '날짜 미정');
+      var sitesArr = e.sites ? e.sites.split(',') : [];
+      var sitesPreview = sitesArr.slice(0,3).map(function(s){return s.trim();}).join(', ') + (sitesArr.length > 3 ? ' 외 '+(sitesArr.length-3)+'개' : '');
+      var color = statusColor[e.status] || 'var(--text-sub)';
+      var eid = e.id;
+      return '<div class="kpi-card" style="cursor:pointer;padding:20px;" onclick="window._arcDetail(''+eid+'')">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:8px;">'
+        + '<div style="font-size:15px;font-weight:700;color:#fff;line-height:1.4;">'+(e.name||'')+'</div>'
+        + '<span style="background:'+color+'22;color:'+color+';border:1px solid '+color+'44;border-radius:6px;font-size:11px;font-weight:700;padding:3px 9px;white-space:nowrap;">'+(e.status||'')+'</span>'
+        + '</div>'
+        + '<div style="font-size:12px;color:var(--text-sub);margin-bottom:6px;">📅 '+dateStr+'</div>'
+        + '<div style="font-size:12px;color:var(--text-sub);margin-bottom:6px;">👥 '+(e.target||'–')+'</div>'
+        + '<div style="font-size:12px;color:var(--text-sub);margin-bottom:6px;">🎁 '+(e.benefit||'–')+'</div>'
+        + '<div style="font-size:12px;color:var(--text-sub);margin-bottom:14px;">🛍 '+(sitesPreview||'–')+'</div>'
+        + '<div style="display:flex;gap:6px;justify-content:flex-end;" onclick="event.stopPropagation()">'
+        + '<button class="btn-edit" onclick="window._arcEdit(''+eid+'')">수정</button>'
+        + '<button class="btn-danger" onclick="window._arcDelete(''+eid+'')">삭제</button>'
+        + '</div></div>';
     }).join('');
+    document.getElementById('arc-grid').innerHTML = html;
   }
 
   window.renderArchive = renderArchive;
 
-  window.openArchiveDetail = function(id) {
-    const e = arcEvents.find(ev => ev.id === id);
+  window._arcDetail = function(id) {
+    var e = arcEvents.find(function(ev){return ev.id===id;});
     if (!e) return;
-    const dateStr = e.start && e.end ? e.start+' ~ '+e.end : e.start ? e.start+' ~' : '날짜 미정';
-    const sites = e.sites ? e.sites.split(',').map(s => '<span style="background:var(--primary-dim);color:var(--primary);border-radius:4px;font-size:11px;font-weight:600;padding:2px 8px;display:inline-block;margin:2px">'+s.trim()+'</span>').join('') : '–';
+    var dateStr = (e.start && e.end) ? (e.start+' ~ '+e.end) : (e.start ? e.start+' ~' : '날짜 미정');
+    var sites = e.sites ? e.sites.split(',').map(function(s){
+      return '<span style="background:var(--primary-dim);color:var(--primary);border-radius:4px;font-size:11px;font-weight:600;padding:2px 8px;display:inline-block;margin:2px">'+s.trim()+'</span>';
+    }).join('') : '–';
     document.getElementById('ph-detail-content').innerHTML =
-      '<div style="font-size:18px;font-weight:700;color:#fff;margin-bottom:16px;">'+e.name+'</div>'
-      +'<div style="font-size:12px;color:var(--text-sub);margin-bottom:8px;">📅 '+dateStr+' &nbsp;|&nbsp; 👥 '+(e.target||'–')+'</div>'
+      '<div style="font-size:18px;font-weight:700;color:#fff;margin-bottom:16px;">'+(e.name||'')+'</div>'
+      +'<div style="font-size:12px;color:var(--text-sub);margin-bottom:8px;">📅 '+dateStr+' | 👥 '+(e.target||'–')+'</div>'
       +'<div style="font-size:13px;color:var(--text-sub);margin-bottom:8px;">🎁 '+(e.benefit||'–')+'</div>'
       +(e.sites ? '<div style="margin-bottom:14px;">'+sites+'</div>' : '')
-      +(e.notice ? '<div style="background:var(--surface2);border-radius:8px;padding:14px;font-size:13px;color:var(--text);line-height:1.8;white-space:pre-wrap;margin-bottom:14px;">'+e.notice+'</div>' : '')
-      +(e.result ? '<div style="background:var(--surface2);border-left:3px solid var(--event);border-radius:0 8px 8px 0;padding:12px 14px;font-size:13px;color:var(--text-sub);">'+e.result+'</div>' : '');
+      +(e.notice ? '<div style="background:var(--surface2);border-radius:8px;padding:14px;font-size:13px;color:var(--text);line-height:1.8;white-space:pre-wrap;margin-bottom:14px;">'+(e.notice||'')+'</div>' : '')
+      +(e.result ? '<div style="background:var(--surface2);border-left:3px solid var(--event);padding:12px 14px;font-size:13px;color:var(--text-sub);">'+(e.result||'')+'</div>' : '');
     document.getElementById('ph-detail-modal').classList.add('open');
   };
 
   window.openArchiveForm = function() {
     arcEditId = null;
     document.getElementById('arc-modal-title').textContent = '이벤트 추가';
-    ['arc-f-name','arc-f-start','arc-f-end','arc-f-target','arc-f-benefit','arc-f-sites','arc-f-notice','arc-f-result'].forEach(id => {
+    ['arc-f-name','arc-f-start','arc-f-end','arc-f-target','arc-f-benefit','arc-f-sites','arc-f-notice','arc-f-result'].forEach(function(id){
       document.getElementById(id).value = '';
     });
     document.getElementById('arc-f-status').value = '예정';
     document.getElementById('arc-modal').classList.add('open');
   };
 
-  window.openArchiveEdit = function(id) {
-    const e = arcEvents.find(ev => ev.id === id);
+  window._arcEdit = function(id) {
+    var e = arcEvents.find(function(ev){return ev.id===id;});
     if (!e) return;
     arcEditId = id;
     document.getElementById('arc-modal-title').textContent = '이벤트 수정';
-    document.getElementById('arc-f-name').value = e.name || '';
-    document.getElementById('arc-f-start').value = e.start || '';
-    document.getElementById('arc-f-end').value = e.end || '';
-    document.getElementById('arc-f-status').value = e.status || '예정';
-    document.getElementById('arc-f-target').value = e.target || '';
-    document.getElementById('arc-f-benefit').value = e.benefit || '';
-    document.getElementById('arc-f-sites').value = e.sites || '';
-    document.getElementById('arc-f-notice').value = e.notice || '';
-    document.getElementById('arc-f-result').value = e.result || '';
+    document.getElementById('arc-f-name').value = e.name||'';
+    document.getElementById('arc-f-start').value = e.start||'';
+    document.getElementById('arc-f-end').value = e.end||'';
+    document.getElementById('arc-f-status').value = e.status||'예정';
+    document.getElementById('arc-f-target').value = e.target||'';
+    document.getElementById('arc-f-benefit').value = e.benefit||'';
+    document.getElementById('arc-f-sites').value = e.sites||'';
+    document.getElementById('arc-f-notice').value = e.notice||'';
+    document.getElementById('arc-f-result').value = e.result||'';
     document.getElementById('arc-modal').classList.add('open');
   };
+  window.openArchiveEdit = window._arcEdit;
 
   window.closeArchiveForm = function() {
     document.getElementById('arc-modal').classList.remove('open');
   };
 
-  window.saveArchiveEvent = async function() {
-    const name = document.getElementById('arc-f-name').value.trim();
+  window.saveArchiveEvent = function() {
+    var name = document.getElementById('arc-f-name').value.trim();
     if (!name) { showToast('이벤트명을 입력해 주세요'); return; }
-    const data = {
-      name,
+    var existing = arcEditId ? arcEvents.find(function(e){return e.id===arcEditId;}) : null;
+    var data = {
+      name: name,
       start: document.getElementById('arc-f-start').value,
       end: document.getElementById('arc-f-end').value,
       status: document.getElementById('arc-f-status').value,
@@ -1341,101 +1355,96 @@ document.getElementById('grade-metric-tabs').addEventListener('click', e => {
       sites: document.getElementById('arc-f-sites').value,
       notice: document.getElementById('arc-f-notice').value,
       result: document.getElementById('arc-f-result').value,
-      createdAt: arcEditId ? (arcEvents.find(e=>e.id===arcEditId)||{}).createdAt||new Date().toISOString() : new Date().toISOString(),
+      createdAt: (existing && existing.createdAt) || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    try {
-      if (arcEditId) {
-        await db.collection('events').doc(arcEditId).update(data);
-        showToast('✅ 수정되었습니다');
-      } else {
-        await db.collection('events').add(data);
-        showToast('✅ 이벤트가 추가되었습니다');
-      }
-      closeArchiveForm();
+    var p = arcEditId ? db.collection('events').doc(arcEditId).update(data) : db.collection('events').add(data);
+    p.then(function() {
+      showToast(arcEditId ? '✅ 수정되었습니다' : '✅ 이벤트가 추가되었습니다');
+      window.closeArchiveForm();
       loadArchive();
-    } catch(e) { showToast('❌ 저장 실패: '+e.message); }
+    }).catch(function(e){ showToast('❌ 저장 실패: '+e.message); });
   };
 
-  window.deleteArchiveEvent = async function(id) {
+  window._arcDelete = function(id) {
     if (!confirm('이 이벤트를 삭제할까요?')) return;
-    try {
-      await db.collection('events').doc(id).delete();
-      showToast('🗑 삭제되었습니다');
-      loadArchive();
-    } catch(e) { showToast('❌ 삭제 실패'); }
+    db.collection('events').doc(id).delete()
+      .then(function(){ showToast('🗑 삭제되었습니다'); loadArchive(); })
+      .catch(function(){ showToast('❌ 삭제 실패'); });
   };
 
-  // ══════════════ 문구 보관함 ══════════════
+  // ══════ 문구 보관함 ══════
 
-  async function loadPhrases() {
+  function loadPhrases() {
     document.getElementById('ph-loading').style.display = 'block';
     document.getElementById('ph-list').innerHTML = '';
-    try {
-      const snap = await db.collection('phrases').orderBy('createdAt', 'desc').get();
-      phrases = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    } catch(e) {
-      const snap = await db.collection('phrases').get();
-      phrases = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    }
-    document.getElementById('ph-loading').style.display = 'none';
-    renderPhrases();
+    db.collection('phrases').orderBy('createdAt', 'desc').get()
+      .then(function(snap) {
+        phrases = snap.docs.map(function(d){ return Object.assign({id: d.id}, d.data()); });
+        document.getElementById('ph-loading').style.display = 'none';
+        renderPhrases();
+      })
+      .catch(function() {
+        db.collection('phrases').get().then(function(snap) {
+          phrases = snap.docs.map(function(d){ return Object.assign({id: d.id}, d.data()); });
+          document.getElementById('ph-loading').style.display = 'none';
+          renderPhrases();
+        });
+      });
   }
 
   function renderPhrases() {
-    const filter = document.getElementById('ph-filter').value;
-    const search = document.getElementById('ph-search').value.toLowerCase();
-    const catColor = { '공지': 'var(--primary)', '이벤트': 'var(--event)', 'CS응대': 'var(--positive)', '기타': 'var(--text-sub)' };
-
-    let filtered = phrases.filter(p => {
-      const mf = filter === 'all' || p.category === filter;
-      const ms = !search || (p.title||'').toLowerCase().includes(search) || (p.body||'').toLowerCase().includes(search);
-      return mf && ms;
+    var filter = document.getElementById('ph-filter').value;
+    var search = document.getElementById('ph-search').value.toLowerCase();
+    var catColor = {'공지':'var(--primary)','이벤트':'var(--event)','CS응대':'var(--positive)','기타':'var(--text-sub)'};
+    var filtered = phrases.filter(function(p) {
+      return (filter === 'all' || p.category === filter) &&
+             (!search || (p.title||'').toLowerCase().includes(search) || (p.body||'').toLowerCase().includes(search));
     });
-
     if (filtered.length === 0) {
       document.getElementById('ph-list').innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-dim);font-size:14px;">문구가 없습니다. 추가해 주세요!</div>';
       return;
     }
-
-    document.getElementById('ph-list').innerHTML = filtered.map(p => {
-      const color = catColor[p.category] || 'var(--text-sub)';
-      const preview = p.body ? p.body.slice(0,120)+(p.body.length>120?'...':'') : '';
-      return '<div class="mgmt-card" style="cursor:pointer;" onclick="openPhraseDetail(''+p.id+'')">'
+    var html = filtered.map(function(p) {
+      var color = catColor[p.category] || 'var(--text-sub)';
+      var preview = p.body ? p.body.slice(0,120)+(p.body.length>120?'...':'') : '';
+      var pid = p.id;
+      return '<div class="mgmt-card" style="cursor:pointer;" onclick="window._phDetail(''+pid+'')">'
         +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:10px;">'
-        +'<div><div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:4px;">'+p.title+'</div>'
+        +'<div><div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:4px;">'+(p.title||'')+'</div>'
         +'<div style="display:flex;gap:6px;flex-wrap:wrap;">'
         +'<span style="background:'+color+'22;color:'+color+';border:1px solid '+color+'44;border-radius:4px;font-size:11px;font-weight:700;padding:2px 8px;">'+(p.category||'기타')+'</span>'
         +(p.tag ? '<span style="background:var(--surface3);color:var(--text-sub);border-radius:4px;font-size:11px;padding:2px 8px;">'+p.tag+'</span>' : '')
         +'</div></div>'
         +'<div style="display:flex;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">'
-        +'<button class="btn-edit" onclick="openPhraseEdit(''+p.id+'')">수정</button>'
-        +'<button class="btn-danger" onclick="deletePhrase(''+p.id+'')">삭제</button>'
+        +'<button class="btn-edit" onclick="window._phEdit(''+pid+'')">수정</button>'
+        +'<button class="btn-danger" onclick="window._phDelete(''+pid+'')">삭제</button>'
         +'</div></div>'
         +'<div style="font-size:13px;color:var(--text-sub);line-height:1.7;white-space:pre-wrap;">'+preview+'</div>'
         +(p.memo ? '<div style="margin-top:10px;font-size:12px;color:var(--text-dim);font-style:italic;">📌 '+p.memo+'</div>' : '')
         +'</div>';
     }).join('');
+    document.getElementById('ph-list').innerHTML = html;
   }
 
   window.renderPhrases = renderPhrases;
 
-  window.openPhraseDetail = function(id) {
-    const p = phrases.find(ph => ph.id === id);
+  window._phDetail = function(id) {
+    var p = phrases.find(function(ph){return ph.id===id;});
     if (!p) return;
-    const catColor = { '공지': 'var(--primary)', '이벤트': 'var(--event)', 'CS응대': 'var(--positive)', '기타': 'var(--text-sub)' };
-    const color = catColor[p.category] || 'var(--text-sub)';
-    const bodyText = (p.body||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    var catColor = {'공지':'var(--primary)','이벤트':'var(--event)','CS응대':'var(--positive)','기타':'var(--text-sub)'};
+    var color = catColor[p.category] || 'var(--text-sub)';
+    var bodyText = (p.body||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     document.getElementById('ph-detail-content').innerHTML =
       '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">'
       +'<span style="background:'+color+'22;color:'+color+';border-radius:4px;font-size:11px;font-weight:700;padding:3px 10px;">'+(p.category||'기타')+'</span>'
       +(p.tag ? '<span style="background:var(--surface3);color:var(--text-sub);border-radius:4px;font-size:11px;padding:3px 10px;">'+p.tag+'</span>' : '')
       +'</div>'
-      +'<div style="font-size:18px;font-weight:700;color:#fff;margin-bottom:16px;">'+p.title+'</div>'
+      +'<div style="font-size:18px;font-weight:700;color:#fff;margin-bottom:16px;">'+(p.title||'')+'</div>'
       +'<div id="ph-body-text" style="background:var(--surface2);border-radius:8px;padding:16px;font-size:14px;color:var(--text);line-height:1.9;white-space:pre-wrap;margin-bottom:14px;">'+bodyText+'</div>'
       +(p.memo ? '<div style="font-size:13px;color:var(--text-sub);font-style:italic;">📌 '+p.memo+'</div>' : '')
       +'<div style="margin-top:16px;display:flex;justify-content:flex-end;">'
-      +'<button onclick="navigator.clipboard.writeText(document.getElementById('ph-body-text').innerText);showToast('📋 복사됐습니다')" style="background:var(--primary);border:none;border-radius:7px;color:#fff;font-family:var(--font);font-size:13px;font-weight:700;padding:8px 18px;cursor:pointer;">📋 복사</button>'
+      +'<button onclick="navigator.clipboard.writeText(document.getElementById('ph-body-text').innerText).then(function(){showToast('📋 복사됐습니다')})" style="background:var(--primary);border:none;border-radius:7px;color:#fff;font-family:var(--font);font-size:13px;font-weight:700;padding:8px 18px;cursor:pointer;">📋 복사</button>'
       +'</div>';
     document.getElementById('ph-detail-modal').classList.add('open');
   };
@@ -1443,69 +1452,59 @@ document.getElementById('grade-metric-tabs').addEventListener('click', e => {
   window.openPhraseForm = function() {
     phraseEditId = null;
     document.getElementById('ph-modal-title').textContent = '문구 추가';
-    ['ph-f-title','ph-f-tag','ph-f-body','ph-f-memo'].forEach(id => document.getElementById(id).value = '');
+    ['ph-f-title','ph-f-tag','ph-f-body','ph-f-memo'].forEach(function(id){document.getElementById(id).value='';});
     document.getElementById('ph-f-cat').value = '공지';
     document.getElementById('ph-modal').classList.add('open');
   };
 
-  window.openPhraseEdit = function(id) {
-    const p = phrases.find(ph => ph.id === id);
+  window._phEdit = function(id) {
+    var p = phrases.find(function(ph){return ph.id===id;});
     if (!p) return;
     phraseEditId = id;
     document.getElementById('ph-modal-title').textContent = '문구 수정';
-    document.getElementById('ph-f-title').value = p.title || '';
-    document.getElementById('ph-f-cat').value = p.category || '공지';
-    document.getElementById('ph-f-tag').value = p.tag || '';
-    document.getElementById('ph-f-body').value = p.body || '';
-    document.getElementById('ph-f-memo').value = p.memo || '';
+    document.getElementById('ph-f-title').value = p.title||'';
+    document.getElementById('ph-f-cat').value = p.category||'공지';
+    document.getElementById('ph-f-tag').value = p.tag||'';
+    document.getElementById('ph-f-body').value = p.body||'';
+    document.getElementById('ph-f-memo').value = p.memo||'';
     document.getElementById('ph-modal').classList.add('open');
   };
+  window.openPhraseEdit = window._phEdit;
 
   window.closePhraseForm = function() {
     document.getElementById('ph-modal').classList.remove('open');
   };
 
-  window.savePhrase = async function() {
-    const title = document.getElementById('ph-f-title').value.trim();
-    const body = document.getElementById('ph-f-body').value.trim();
+  window.savePhrase = function() {
+    var title = document.getElementById('ph-f-title').value.trim();
+    var body = document.getElementById('ph-f-body').value.trim();
     if (!title || !body) { showToast('제목과 본문을 입력해 주세요'); return; }
-    const data = {
-      title,
+    var existing = phraseEditId ? phrases.find(function(p){return p.id===phraseEditId;}) : null;
+    var data = {
+      title: title,
       category: document.getElementById('ph-f-cat').value,
       tag: document.getElementById('ph-f-tag').value,
-      body,
+      body: body,
       memo: document.getElementById('ph-f-memo').value,
-      createdAt: phraseEditId ? (phrases.find(p=>p.id===phraseEditId)||{}).createdAt||new Date().toISOString() : new Date().toISOString(),
+      createdAt: (existing && existing.createdAt) || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    try {
-      if (phraseEditId) {
-        await db.collection('phrases').doc(phraseEditId).update(data);
-        showToast('✅ 수정되었습니다');
-      } else {
-        await db.collection('phrases').add(data);
-        showToast('✅ 문구가 추가되었습니다');
-      }
-      closePhraseForm();
+    var p = phraseEditId ? db.collection('phrases').doc(phraseEditId).update(data) : db.collection('phrases').add(data);
+    p.then(function() {
+      showToast(phraseEditId ? '✅ 수정되었습니다' : '✅ 문구가 추가되었습니다');
+      window.closePhraseForm();
       loadPhrases();
-    } catch(e) { showToast('❌ 저장 실패: '+e.message); }
+    }).catch(function(e){ showToast('❌ 저장 실패: '+e.message); });
   };
 
-  window.deletePhrase = async function(id) {
+  window._phDelete = function(id) {
     if (!confirm('이 문구를 삭제할까요?')) return;
-    try {
-      await db.collection('phrases').doc(id).delete();
-      showToast('🗑 삭제되었습니다');
-      loadPhrases();
-    } catch(e) { showToast('❌ 삭제 실패'); }
+    db.collection('phrases').doc(id).delete()
+      .then(function(){ showToast('🗑 삭제되었습니다'); loadPhrases(); })
+      .catch(function(){ showToast('❌ 삭제 실패'); });
   };
 
-  // 모달 배경 클릭 닫기
-  ['arc-modal','ph-modal','ph-detail-modal'].forEach(id => {
-    document.getElementById(id).addEventListener('click', e => {
-      if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
-    });
-  });
+})();
 </script>
 </body>
 </html>
