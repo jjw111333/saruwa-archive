@@ -429,8 +429,12 @@ footer{border-top:1px solid var(--border);padding:20px 0 40px;text-align:center;
           <div class="mgmt-card-title">저장된 이벤트</div>
           <div class="mgmt-card-sub">클릭하면 수정, 삭제 가능합니다</div>
         </div>
-        <button onclick="exportToArchive()" style="background:var(--event-dim);border:1px solid rgba(240,192,96,0.3);border-radius:7px;color:var(--event);font-family:var(--font);font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;">📦 아카이브로 내보내기</button>
+        <button onclick="exportToArchive()" style="background:var(--event-dim);border:1px solid rgba(240,192,96,0.3);border-radius:7px;color:var(--event);font-family:var(--font);font-size:12px;font-weight:700;padding:7px 14px;cursor:pointer;">📦 선택 항목 아카이브로 내보내기</button>
       </div>
+      <label style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;color:var(--text-sub);cursor:pointer;">
+        <input type="checkbox" id="ev-check-all" onchange="toggleAllEvChecks(this.checked)" style="accent-color:var(--event);cursor:pointer;">
+        전체 선택
+      </label>
       <div class="saved-list" id="ev-saved-list"></div>
     </div>
   </div>
@@ -920,6 +924,7 @@ function renderEvList() {
   if(!entries.length){list.innerHTML='<div class="saved-empty">저장된 이벤트가 없습니다</div>';return;}
   list.innerHTML=entries.map(([ym,ev])=>`
     <div class="saved-item">
+      <input type="checkbox" class="ev-check" data-ym="${ym}" style="margin-top:3px;accent-color:var(--event);cursor:pointer;flex-shrink:0;">
       <div class="saved-item-body">
         <div class="saved-item-title"><span style="color:var(--event);font-family:var(--mono);font-size:12px">${ym}</span> ${ev.status==='upcoming'?'📅':''} ${ev.name}</div>
         <div class="saved-item-sub">${ev.type}${ev.note?' · '+ev.note:''}</div>
@@ -929,6 +934,12 @@ function renderEvList() {
         <button class="btn-danger" onclick="deleteEvent('${ym}')">삭제</button>
       </div>
     </div>`).join('');
+  const checkAll=document.getElementById('ev-check-all');
+  if(checkAll) checkAll.checked=false;
+}
+
+function toggleAllEvChecks(checked) {
+  document.querySelectorAll('.ev-check').forEach(cb=>cb.checked=checked);
 }
 
 // ══════════════════════════════════════════════
@@ -1242,9 +1253,11 @@ document.getElementById('grade-metric-tabs').addEventListener('click', e => {
   // ══════ 이벤트 관리 → 아카이브 내보내기 ══════
   window.exportToArchive = function() {
     var events = (window.APP && window.APP.events) ? window.APP.events : {};
-    var entries = Object.entries(events);
+    var checkedYms = Array.prototype.map.call(document.querySelectorAll('.ev-check:checked'), function(cb) { return cb.dataset.ym; });
+    if (!checkedYms.length) { showToast('내보낼 이벤트를 선택해주세요'); return; }
+    var entries = checkedYms.filter(function(ym) { return events[ym]; }).map(function(ym) { return [ym, events[ym]]; });
     if (!entries.length) { showToast('내보낼 이벤트가 없습니다'); return; }
-    if (!confirm(entries.length + '개 이벤트를 아카이브로 내보낼까요?\n이미 아카이브에 있는 항목은 중복 추가될 수 있습니다.')) return;
+    if (!confirm('선택한 ' + entries.length + '개 이벤트를 아카이브로 내보낼까요?\n이미 아카이브에 있는 항목은 중복 추가될 수 있습니다.')) return;
 
     var statusMap = { 'done': '종료', 'upcoming': '예정', 'ongoing': '진행중' };
     var promises = entries.map(function(entry) {
@@ -1269,6 +1282,9 @@ document.getElementById('grade-metric-tabs').addEventListener('click', e => {
     Promise.all(promises)
       .then(function() {
         showToast('✅ ' + entries.length + '개 이벤트를 아카이브로 내보냈습니다!');
+        document.querySelectorAll('.ev-check').forEach(function(cb) { cb.checked = false; });
+        var checkAll = document.getElementById('ev-check-all');
+        if (checkAll) checkAll.checked = false;
         // 아카이브 탭으로 이동
         document.querySelector('[data-tab="archive"]').click();
       })
